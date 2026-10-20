@@ -1,0 +1,672 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei',
+    sans-serif;
+  font-size: 14px;
+  color: #1f2329;
+  background: #f5f6f7;
+}
+
+.sidepanel-root {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+  min-height: 100vh;
+}
+
+/* 顶栏：状态指示 + 清空任务。 */
+.sp-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.sp-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.sp-status-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #9aa4b2;
+}
+
+.sp-status-dot[data-status='collecting'] {
+  background: #0f4f8a;
+}
+
+.sp-status-dot[data-status='generating'] {
+  background: #d9a406;
+  animation: sp-pulse 1s ease-in-out infinite;
+}
+
+.sp-status-dot[data-status='done'] {
+  background: #10634f;
+}
+
+@keyframes sp-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.sp-clear {
+  background: transparent;
+  color: #5f6f7c;
+  border: 1px dashed rgba(15, 23, 42, 0.18);
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.sp-clear:hover {
+  color: #9d2f2f;
+  border-color: rgba(157, 47, 47, 0.3);
+}
+
+/* 区段通用。 */
+.sp-references,
+.sp-params,
+.sp-progress {
+  border-radius: 12px;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  background: #ffffff;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sp-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.sp-section-head h2 {
+  margin: 0;
+  font-size: 13px;
+}
+
+.sp-hint {
+  font-size: 11px;
+  color: #5f6f7c;
+  margin: 0;
+}
+
+.sp-hint-warn {
+  color: #9a6700;
+  background: #fef6e7;
+  border-radius: 6px;
+  padding: 4px 8px;
+}
+
+/* 参考图区。 */
+.sp-quota {
+  font-size: 11px;
+  color: #5f6f7c;
+  font-weight: 600;
+}
+
+.sp-ref-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.sp-ref-thumb {
+  position: relative;
+  width: 56px;
+  height: 56px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  background: #f5f6f7;
+  padding: 0;
+  cursor: default;
+}
+
+.sp-ref-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.sp-ref-name {
+  font-size: 10px;
+  color: #5f6f7c;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 2px;
+  word-break: break-all;
+}
+
+.sp-ref-remove {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 16px;
+  height: 16px;
+  line-height: 1;
+  border: none;
+  border-radius: 50%;
+  background: rgba(15, 23, 42, 0.6);
+  color: #fff;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 0;
+}
+
+.sp-ref-add {
+  position: relative;
+}
+
+.sp-ref-add-btn {
+  width: 56px;
+  height: 56px;
+  border-radius: 8px;
+  border: 1px dashed rgba(15, 23, 42, 0.28);
+  background: #fff;
+  color: #5f6f7c;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.sp-ref-add-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.sp-add-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: #fff;
+  border: 1px solid rgba(15, 23, 42, 0.14);
+  border-radius: 8px;
+  box-shadow: 0 8px 20px rgba(20, 33, 61, 0.16);
+  padding: 6px;
+  min-width: 120px;
+}
+
+.sp-add-menu button {
+  background: #f5f6f7;
+  color: #1f2937;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.sp-add-menu button:hover {
+  background: #e8f5ef;
+  color: #10634f;
+}
+
+/* 参数区。 */
+.sp-model {
+  font-size: 11px;
+  color: #5f6f7c;
+  font-weight: 600;
+}
+
+/* v3.9 模型选择下拉（按服务商分组；显示 displayName，必要时补远端型号）。 */
+.sp-field select.sp-model-select {
+  width: 100%;
+  font-size: 12px;
+  font-weight: 600;
+  color: #2d463c;
+  background: #f4f7f6;
+  border: 1px solid rgba(45, 70, 60, 0.24);
+  border-radius: 9px;
+  padding: 8px;
+  cursor: pointer;
+}
+
+.sp-field select.sp-model-select:disabled {
+  opacity: 0.72;
+  cursor: not-allowed;
+}
+
+/* v3.9 配置/能力提示（无模型、模型被删、Key 缺失）。 */
+.sp-config-notice {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  border-radius: 9px;
+  border: 1px solid rgba(15, 79, 138, 0.25);
+  background: #e4f1fb;
+  padding: 8px 10px;
+}
+
+.sp-config-notice p {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.5;
+  color: #0f4f8a;
+}
+
+.sp-config-notice-warn {
+  border-color: rgba(154, 103, 0, 0.32);
+  background: #fef6e7;
+}
+
+.sp-config-notice-warn p {
+  color: #7a5200;
+}
+
+.sp-config-notice-error {
+  border-color: rgba(157, 47, 47, 0.3);
+  background: #fce7e7;
+}
+
+.sp-config-notice-error p {
+  color: #9d2f2f;
+}
+
+.sp-settings-link {
+  flex-shrink: 0;
+  align-self: center;
+  background: #ffffff;
+  color: inherit;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.sp-settings-link:hover {
+  background: rgba(255, 255, 255, 0.7);
+}
+
+/* gemini 比例 + 清晰度双下拉并排行。 */
+.sp-field-row {
+  flex-direction: row;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.sp-field-row .sp-field-inline {
+  flex: 1;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sp-field-row .sp-field-inline span {
+  font-size: 12px;
+}
+
+.sp-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: #5f6f7c;
+}
+
+.sp-field-inline {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+.sp-field-inline > span {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.sp-prompt {
+  width: 100%;
+  min-height: 64px;
+  resize: vertical;
+  border: 1px solid rgba(45, 70, 60, 0.24);
+  border-radius: 9px;
+  font-size: 12px;
+  padding: 8px;
+  background: rgba(255, 255, 255, 0.96);
+  color: #1f2937;
+  font-family: inherit;
+}
+
+.sp-field select,
+.sp-size-custom,
+.sp-field input[type='number'] {
+  width: 100%;
+  border: 1px solid rgba(45, 70, 60, 0.24);
+  border-radius: 9px;
+  font-size: 12px;
+  padding: 8px;
+  background: rgba(255, 255, 255, 0.96);
+  color: #1f2937;
+}
+
+.sp-size-custom[aria-invalid='true'] {
+  border-color: rgba(157, 47, 47, 0.5);
+}
+
+.sp-field-error {
+  font-size: 11px;
+  color: #9d2f2f;
+}
+
+.sp-generate {
+  align-self: flex-start;
+  min-width: 96px;
+}
+
+.sp-generate:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* 进度 / 反馈。 */
+.sp-bubble {
+  border-radius: 10px;
+  padding: 8px 10px;
+  font-size: 12px;
+  border: 1px solid transparent;
+}
+
+.sp-bubble-info {
+  color: #0f4f8a;
+  background: #e4f1fb;
+  border-color: rgba(15, 79, 138, 0.25);
+}
+
+.sp-bubble-success {
+  color: #10634f;
+  background: #e8f5ef;
+  border-color: rgba(16, 99, 79, 0.3);
+}
+
+.sp-bubble-error {
+  color: #9d2f2f;
+  background: #fce7e7;
+  border-color: rgba(157, 47, 47, 0.3);
+}
+
+.sp-progress-text {
+  margin: 0;
+  font-size: 12px;
+  color: #5f6f7c;
+}
+
+/* 历史区。 */
+.sp-history-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sp-history-item {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.sp-history-thumb {
+  width: 44px;
+  height: 44px;
+  border-radius: 6px;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.sp-history-meta {
+  min-width: 0;
+  flex: 1;
+}
+
+.sp-history-prompt {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: #1f2937;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sp-history-sub {
+  margin: 2px 0 0;
+  font-size: 11px;
+  color: #5f6f7c;
+}
+
+.sp-history-reuse {
+  align-self: flex-start;
+  margin-top: 4px;
+  background: transparent;
+  color: #10634f;
+  border: 1px solid rgba(16, 99, 79, 0.28);
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* 资产库选择器：覆盖式底部抽屉（spec FR-320「弹出资产选择器」）。
+   遮罩盖住侧边栏全部内容、抽屉从底部滑入，始终在视口内、强聚焦。 */
+.sp-picker-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: rgba(15, 23, 42, 0.4);
+  display: flex;
+  align-items: flex-end;
+  animation: sp-scrim-in 0.16s ease-out;
+}
+
+.sp-picker {
+  width: 100%;
+  max-height: 82%;
+  border-radius: 16px 16px 0 0;
+  border: 1px solid rgba(15, 23, 42, 0.14);
+  border-bottom: none;
+  background: #fff;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  box-shadow: 0 -8px 24px rgba(20, 33, 61, 0.22);
+  animation: sp-sheet-in 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+/* 顶部抓手指示，强化「抽屉」心智而非内联展开。 */
+.sp-picker-grip {
+  width: 36px;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.18);
+  margin: 0 auto 2px;
+  flex-shrink: 0;
+}
+
+@keyframes sp-scrim-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes sp-sheet-in {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+.sp-picker-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.sp-picker-head button {
+  background: transparent;
+  color: #5f6f7c;
+  border: none;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.sp-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
+  overflow-y: auto;
+}
+
+.sp-picker-thumb {
+  width: 100%;
+  aspect-ratio: 1;
+  padding: 0;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 8px;
+  overflow: hidden;
+  cursor: pointer;
+  background: #f5f6f7;
+}
+
+.sp-picker-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* 本地轻量 toast。 */
+.sp-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  background: rgba(15, 23, 42, 0.92);
+  color: #fff;
+  font-size: 12px;
+  border-radius: 10px;
+  padding: 8px 10px;
+  box-shadow: 0 8px 20px rgba(20, 33, 61, 0.22);
+}
+
+/* 任务列表（多任务）。 */
+.sp-task-section {
+  border-radius: 12px;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  background: #ffffff;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sp-task-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sp-task-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  background: #f5f6f7;
+  cursor: pointer;
+}
+
+.sp-task-row:hover {
+  border-color: rgba(15, 79, 138, 0.3);
+}
+
+.sp-task-row-active {
+  background: #e4f1fb;
+  border-color: rgba(15, 79, 138, 0.45);
+}
+
+.sp-task-meta {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.sp-task-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #1f2937;
+}
+
+.sp-task-sub {
+  font-size: 11px;
+  color: #5f6f7c;
+}
+
+.sp-task-clear {
+  width: 18px;
+  height: 18px;
+  line-height: 1;
+  border: none;
+  border-radius: 50%;
+  background: rgba(15, 23, 42, 0.18);
+  color: #1f2937;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.sp-task-clear:hover {
+  background: rgba(157, 47, 47, 0.5);
+  color: #fff;
+}

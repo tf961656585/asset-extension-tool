@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+
+      # 公开仓兜底：私有设计文档 / agent 记忆不得出现在公开仓。
+      # 私有仓本身会命中 docs/ 与 memory/，因此只在公开仓执行。
+      - name: Guard private paths
+        if: github.event.repository.private == false
+        run: |
+          for p in docs memory AGENTS.md .opensource .githooks task-packet .zcode; do
+            if [ -e "$p" ]; then
+              echo "::error::私有路径出现在公开仓：$p"
+              exit 1
+            fi
+          done
