@@ -7,6 +7,9 @@ import {
   createInitialGenerationTasks,
   generationTasksReducer,
   pickDefaultModelId,
+  taskModeLabel,
+  taskStageLabel,
+  taskStatusText,
   validateTaskForSubmit,
   type GenerationTask,
   type TaskModelBinding
@@ -393,5 +396,31 @@ describe('buildGenerationSubmitFields（v3.9 载荷）', () => {
   it('未选模型返回 null', () => {
     const state = createTask();
     expect(buildGenerationSubmitFields(taskOf(state, 't1'), [])).toBeNull();
+  });
+});
+
+describe('任务状态展示文案（阶段优先 + 模式二级）', () => {
+  it('阶段词只表达生命周期：idle 与 collecting 同为待生成', () => {
+    expect(taskStageLabel('idle')).toBe('待生成');
+    expect(taskStageLabel('collecting')).toBe('待生成');
+    expect(taskStageLabel('generating')).toBe('生成中');
+    expect(taskStageLabel('done')).toBe('已完成');
+  });
+
+  it('模式词由参考图数量推导，为空即文生图', () => {
+    expect(taskModeLabel(0)).toBe('文生图');
+    expect(taskModeLabel(1)).toBe('图生图');
+  });
+
+  it('状态位文案为「阶段 · 模式」，不再出现「收集中」', () => {
+    const collecting = taskOf(createTask({ references: [WEB_REF] }), 't1');
+    expect(taskStatusText(collecting)).toBe('待生成 · 图生图');
+
+    const idle = taskOf(createTask(), 't1');
+    expect(taskStatusText(idle)).toBe('待生成 · 文生图');
+
+    for (const status of ['idle', 'collecting', 'generating', 'done'] as const) {
+      expect(taskStatusText({ status, references: [] })).not.toContain('收集中');
+    }
   });
 });

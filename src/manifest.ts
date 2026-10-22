@@ -2,11 +2,11 @@ import { defineManifest } from '@crxjs/vite-plugin';
 
 export default defineManifest({
   manifest_version: 3,
-  name: 'Asset Extension Tool',
-  description: '快速保存网页图像并进行检索、筛选和分类管理。',
-  version: '0.1.0',
+  name: '素材采图',
+  description: '保存网页图片到本地资产库，并用自带 API Key 的 AI 服务做图生图与多图收集。',
+  version: '0.2.0',
   action: {
-    default_title: '资产扩展工具',
+    default_title: '素材采图',
     default_popup: 'src/popup/index.html'
   },
   permissions: ['storage', 'downloads', 'tabs', 'activeTab', 'clipboardWrite', 'contextMenus', 'sidePanel'],

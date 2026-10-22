@@ -137,6 +137,33 @@ export function fromReferencePayloads(
   });
 }
 
+/**
+ * 网页侧收集参考图被拒绝的原因码（v3.10）。
+ * `no_task` 是唯一可退化处理的拒绝：页面侧改走「新建任务并加入」。
+ * `relay_timeout` 表示侧边栏已连接但未回执、任务状态未知——必须按拒绝处理，不得擅自新建。
+ */
+export type CollectBlockReason =
+  | 'no_task'
+  | 'relay_timeout'
+  | 'generating'
+  | 'model_missing'
+  | 'references_unsupported'
+  | 'references_full';
+
+/**
+ * 网页侧「加入当前生图任务」的目标描述（v3.10）。
+ * 由侧边栏按当前聚焦任务计算，经 background 中继给页面侧；background 不持有任务状态。
+ */
+export interface CollectTarget {
+  available: boolean;
+  /** 与侧边栏任务列表序号一致的展示名，如「任务 2」。 */
+  taskLabel?: string;
+  refCount: number;
+  maxRefs: number;
+  /** available=false 时的原因；available=true 时缺省。 */
+  blockReason?: CollectBlockReason;
+}
+
 export type GenerationEndpoint = 'generations' | 'edits';
 
 /** 每任务唯一 taskId 生成契约，供入口（popup/content）与测试复用。 */

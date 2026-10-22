@@ -195,7 +195,7 @@ describe('background generation routing (v3.9 modelRecordId)', () => {
     expect(feedbacks.some((feedback) => feedback.payload.level === 'info')).toBe(true);
     const success = feedbacks.find((feedback) => feedback.payload.level === 'success');
     expect(success?.payload.taskId).toBe('task_1');
-    expect(String(success?.payload.message)).toContain('1 张已入库');
+    expect(String(success?.payload.message)).toContain('1 张已存入资产库');
   });
 
   it('OpenAI 图生图：有参考图走 /images/edits multipart', async () => {
@@ -345,7 +345,7 @@ describe('background generation routing (v3.9 modelRecordId)', () => {
 
     const zombie = feedbacksOf(postMessage).find((f) => f.payload.level === 'error');
     expect(zombie).toBeDefined();
-    expect(String(zombie?.payload.message)).toContain('可重试');
+    expect(String(zombie?.payload.message)).toBe('生成超时，请重试。');
 
     // 迟到的成功响应：应被丢弃，不再产生第二条 success。
     resolveFetch({ json: async () => ({ data: [{ b64_json: 'x' }] }) });
@@ -355,7 +355,7 @@ describe('background generation routing (v3.9 modelRecordId)', () => {
     expect(successes).toHaveLength(0);
   });
 
-  it('被动断连（fetch 抛网络错误）：归为 level:error 可重试文案，不含「生图超时」', async () => {
+  it('被动断连（fetch 抛网络错误）：归为 level:error 可重试文案，不使用超时文案', async () => {
     seedConfig();
     const { port, postMessage } = makePort();
     bg.setSidePanelPort(port);
@@ -369,7 +369,7 @@ describe('background generation routing (v3.9 modelRecordId)', () => {
 
     const error = feedbacksOf(postMessage).find((f) => f.payload.level === 'error');
     expect(error).toBeDefined();
-    expect(String(error?.payload.message)).not.toContain('生图超时');
+    expect(String(error?.payload.message)).not.toContain('超时');
     expect(error?.payload.taskId).toBe('task_4');
   });
 });

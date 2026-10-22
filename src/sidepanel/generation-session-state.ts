@@ -413,6 +413,30 @@ export function generationTasksReducer(
   }
 }
 
+/** 阶段词：状态位只回答「到哪一步了」，idle 与 collecting 同为待生成。 */
+export type TaskStageLabel = '待生成' | '生成中' | '已完成';
+
+export function taskStageLabel(status: GenerationTaskStatus): TaskStageLabel {
+  switch (status) {
+    case 'generating':
+      return '生成中';
+    case 'done':
+      return '已完成';
+    default:
+      return '待生成';
+  }
+}
+
+/** 模式词：一级状态之后的二级信息，参考图为空即文生图。 */
+export function taskModeLabel(referenceCount: number): '文生图' | '图生图' {
+  return referenceCount > 0 ? '图生图' : '文生图';
+}
+
+/** 状态位文案：阶段在前、模式在后（如「待生成 · 图生图」）。 */
+export function taskStatusText(task: Pick<GenerationTask, 'status' | 'references'>): string {
+  return `${taskStageLabel(task.status)} · ${taskModeLabel(task.references.length)}`;
+}
+
 /** 在飞（generating）任务数，用于并发计数。 */
 export function countGenerating(tasks: Record<string, GenerationTask>): number {
   return Object.values(tasks).filter((task) => task.status === 'generating').length;

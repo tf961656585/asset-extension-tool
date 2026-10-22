@@ -8,19 +8,26 @@ import {
 } from '../src/shared/messages';
 
 describe('message types', () => {
-  it('不再暴露 GENERATION_ADD_REFERENCE / SCAN_IMAGES 消息类型', () => {
+  it('不暴露 SCAN_IMAGES 与旧的 GENERATION_ADD_REFERENCE 消息类型', () => {
     expect('SCAN_IMAGES' in MESSAGE_TYPES).toBe(false);
+    // v3.10 的收集能力走 GENERATION_COLLECT_* 系列，不复用 v3.2 已删除的旧名。
     expect('GENERATION_ADD_REFERENCE' in MESSAGE_TYPES).toBe(false);
   });
 
-  it('包含保存与生图两类消息类型（含多任务 CREATE/CANCEL，恰为 6 个键）', () => {
+  it('包含保存、生图与收集三类消息类型（含多任务 CREATE/CANCEL 与 v3.10 COLLECT 系列）', () => {
     expect(Object.keys(MESSAGE_TYPES)).toEqual([
       'SAVE_IMAGE',
       'SAVE_FEEDBACK',
       'GENERATION_SUBMIT',
       'GENERATION_CREATE_TASK',
       'GENERATION_CANCEL_TASK',
-      'GENERATION_FEEDBACK'
+      'GENERATION_FEEDBACK',
+      'GENERATION_COLLECT_REFERENCE',
+      'GENERATION_COLLECT_TARGET_QUERY',
+      'GENERATION_COLLECT_TARGET_REQUEST',
+      'GENERATION_COLLECT_REQUEST',
+      'GENERATION_COLLECT_REPLY',
+      'GENERATION_COLLECT_FEEDBACK'
     ]);
   });
 });

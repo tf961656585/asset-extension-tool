@@ -14,6 +14,7 @@ import {
   createInitialGenerationTasks,
   generationTasksReducer,
   pickDefaultModelId,
+  taskStatusText,
   validateTaskForSubmit,
   type GenerationTask,
   type HistoryItem,
@@ -34,6 +35,7 @@ import { getGeneratedBlob } from '../shared/idb-asset-store';
 import { useAssetImageSrc, useIdbBlobSrc } from '../shared/use-asset-image-src';
 import type { AssetRecord } from '../shared/model';
 import { SparkleIcon } from '../popup/Icons';
+import { decideCollect, describeCollectTarget } from './collect-decision';
 import {
   defaultParams,
   getProtocol,
@@ -78,21 +80,6 @@ function knownBytes(refs: GenerationReference[]): number {
   return refs.reduce((sum, ref) => sum + (ref.bytes ?? 0), 0);
 }
 
-function statusLabel(status: string): string {
-  switch (status) {
-    case 'idle':
-      return '文生图';
-    case 'collecting':
-      return '图生图 · 收集中';
-    case 'generating':
-      return '生成中';
-    case 'done':
-      return '已完成';
-    default:
-      return status;
-  }
-}
-
 function formatHistoryTime(isoTime: string): string {
   const time = new Date(isoTime);
   if (Number.isNaN(time.getTime())) {
@@ -128,7 +115,7 @@ function TaskList(props: {
           <span className="sp-task-meta">
             <span className="sp-task-title">任务 {index + 1}</span>
             <span className="sp-task-sub">
-              {statusLabel(task.status)} · {task.references.length}/
+              {taskStatusText(task)} · {task.references.length}/
               {task.modelRecordId ? task.maxRefs : '—'} 张
             </span>
           </span>
@@ -316,8 +303,16 @@ export default function App() {
   const toastTimer = useRef<number | null>(null);
   const tasksRef = useRef(tasks);
   tasksRef.current = tasks;
+  const activeTaskIdRef = useRef(activeTaskId);
+  activeTaskIdRef.current = activeTaskId;
   const configRef = useRef<GenerationConfig | null>(config);
   configRef.current = config;
+  /**
+   * 已受理但尚未反映到 tasksRef 的加入（taskId → imageUrl 集合）。
+   * 端口回调是同步到达的，连续两拍可能在 React 重渲染前都读到同一份旧状态；
+   * 没有这层在途记录，同一张图连点两次会绕过去重、占掉两个配额。
+   */
+  const inFlightAddsRef = useRef<Map<string, Set<string>>>(new Map());
 
   function showLocalToast(message: string): void {
     setLocalToast(message);
@@ -325,6 +320,40 @@ export default function App() {
       window.clearTimeout(toastTimer.current);
     }
     toastTimer.current = window.setTimeout(() => setLocalToast(null), 2600);
+  }
+
+  /**
+   * 当前聚焦任务及其在任务列表中的序号（0 起）。
+   * 端口回调只挂载一次，必须从 ref 读最新状态，不能闭包捕获渲染期的 tasks。
+   */
+  function focusedTask(): { focused: GenerationTask | null; taskIndex: number } {
+    const current = tasksRef.current;
+    const activeId = activeTaskIdRef.current;
+    const focused = activeId ? current[activeId] ?? null : null;
+    const taskIndex = focused ? Object.keys(current).indexOf(focused.taskId) : 0;
+    return { focused, taskIndex: Math.max(taskIndex, 0) };
+  }
+
+  /**
+   * 取该任务的在途加入集合：先剔除已落进 tasks 的图（重渲染已完成），
+   * 剩下的就是「已受理但状态里还没有」的那部分。返回的集合可直接原地追加。
+   */
+  function pruneInFlightAdds(task: GenerationTask): Set<string> {
+    const existing = new Set(
+      task.references.filter((ref) => ref.kind === 'web' && ref.imageUrl).map((ref) => ref.imageUrl!)
+    );
+    const pending = inFlightAddsRef.current.get(task.taskId) ?? new Set<string>();
+    for (const url of pending) {
+      if (existing.has(url)) {
+        pending.delete(url);
+      }
+    }
+    if (pending.size === 0) {
+      inFlightAddsRef.current.delete(task.taskId);
+    } else {
+      inFlightAddsRef.current.set(task.taskId, pending);
+    }
+    return pending;
   }
 
   async function refreshConfig(): Promise<void> {
@@ -384,6 +413,83 @@ export default function App() {
           // 错误反馈统一收敛为可重试态：无参考图回 idle、有参考图回 collecting。
           dispatch({ type: 'fail-task', taskId });
         }
+      } else if (msg.type === MESSAGE_TYPES.GENERATION_COLLECT_TARGET_REQUEST) {
+        // 角标点击前的可加入查询：只读当前聚焦任务，不改状态。
+        const { requestId } = msg.payload;
+        const { focused, taskIndex } = focusedTask();
+        chrome.runtime
+          .sendMessage({
+            type: MESSAGE_TYPES.GENERATION_COLLECT_REPLY,
+            payload: {
+              requestId,
+              kind: 'target',
+              target: describeCollectTarget(focused, taskIndex)
+            }
+          })
+          .catch(() => undefined);
+      } else if (msg.type === MESSAGE_TYPES.GENERATION_COLLECT_REQUEST) {
+        const { requestId, imageUrl } = msg.payload;
+        const current = tasksRef.current;
+        const { focused, taskIndex } = focusedTask();
+        const inFlight = focused ? pruneInFlightAdds(focused) : new Set<string>();
+        // 在途图一并计入裁定：配额与去重都不能只看已落库的那份状态。
+        const decision = decideCollect(focused, imageUrl, taskIndex, [...inFlight]);
+
+        let result;
+        if (decision.kind === 'added') {
+          inFlight.add(imageUrl);
+          dispatch({
+            type: 'add-reference',
+            taskId: focused!.taskId,
+            reference: { kind: 'web', imageUrl }
+          });
+          dispatch({
+            type: 'set-feedback',
+            taskId: focused!.taskId,
+            feedback: {
+              level: 'info',
+              message: `已加入网页参考图（${decision.refCount}/${decision.maxRefs} 张）`
+            }
+          });
+          result = {
+            outcome: 'added' as const,
+            message: `已加入${decision.taskLabel}（${decision.refCount}/${decision.maxRefs} 张）。`,
+            taskLabel: decision.taskLabel,
+            refCount: decision.refCount,
+            maxRefs: decision.maxRefs
+          };
+        } else if (decision.kind === 'duplicate') {
+          result = {
+            outcome: 'duplicate' as const,
+            message: '这张图已在任务中。',
+            taskLabel: decision.taskLabel
+          };
+        } else if (decision.kind === 'blocked') {
+          result = {
+            outcome: 'blocked' as const,
+            message: decision.message,
+            blockReason: decision.reason,
+            maxRefs: decision.maxRefs
+          };
+        } else {
+          // 没有可加入的任务：页面侧此刻的意图仍是「基于这张图生成」，按 reference-first 新建。
+          const taskId = createTaskId();
+          createTaskWithDefaults(taskId, [{ kind: 'web', imageUrl }], 'reference-first');
+          const taskLabel = `任务 ${Object.keys(current.tasks).length + 1}`;
+          result = {
+            outcome: 'fellBackToNewTask' as const,
+            message: `暂无生图任务，已新建${taskLabel}并加入。`,
+            taskLabel,
+            refCount: 1
+          };
+        }
+
+        chrome.runtime
+          .sendMessage({
+            type: MESSAGE_TYPES.GENERATION_COLLECT_REPLY,
+            payload: { requestId, kind: 'result', result }
+          })
+          .catch(() => undefined);
       }
     });
     port.onDisconnect.addListener(() => {
@@ -736,7 +842,7 @@ export default function App() {
       dispatch({
         type: 'set-feedback',
         taskId,
-        feedback: { level: 'error', message: '参考图字节序列化失败。' }
+        feedback: { level: 'error', message: '参考图读取失败，请重新添加。' }
       });
       return;
     }
@@ -926,10 +1032,7 @@ export default function App() {
       <header className="sp-topbar">
         <div className="sp-status">
           <span className="sp-status-dot" data-status={activeTask.status} />
-          <span className="sp-status-text">
-            {statusLabel(activeTask.status)}
-            {generatingCount > 0 ? `（在飞 ${generatingCount}/${MAX_CONCURRENT}）` : ''}
-          </span>
+          <span className="sp-status-text">{taskStatusText(activeTask)}</span>
         </div>
         <button type="button" className="sp-clear" onClick={clearAllTasks} aria-label="清空全部任务">
           清空全部
@@ -943,7 +1046,10 @@ export default function App() {
       <section className="sp-task-section">
         <div className="sp-section-head">
           <h2>任务</h2>
-          <span className="sp-quota">{tasksList.length} 个</span>
+          <span className="sp-quota">
+            {tasksList.length} 个
+            {generatingCount > 0 ? ` · 生成中 ${generatingCount}/${MAX_CONCURRENT}` : ''}
+          </span>
         </div>
         <TaskList
           tasks={tasksList}
@@ -1028,6 +1134,9 @@ export default function App() {
             {activeTask.modelRecordId ? '无参考图（文生图模式）。' : '选择模型后可添加参考图。'}
           </p>
         ) : null}
+        {activeTask.supportsReferenceImage && activeTask.modelRecordId ? (
+          <p className="sp-hint">也可在其他网页图片上右键选「加入当前生图任务」，把图收进这个任务。</p>
+        ) : null}
         {activeModel && !activeModel.supportsReferenceImage ? (
           <p className="sp-hint">当前模型不支持参考图。</p>
         ) : null}
@@ -1035,7 +1144,7 @@ export default function App() {
           <p className="sp-hint sp-hint-warn">参考图已达当前模型上限（{activeTask.maxRefs} 张）。</p>
         ) : null}
         {nearLimit && !atRefCap ? (
-          <p className="sp-hint sp-hint-warn">参考图接近上限，注意张数与大小配额。</p>
+          <p className="sp-hint sp-hint-warn">参考图接近上限，注意张数与总大小。</p>
         ) : null}
       </section>
 
@@ -1258,7 +1367,7 @@ export default function App() {
         ) : null}
         {activeTask.status === 'done' ? (
           <p className="sp-progress-text">
-            已完成{activeTask.feedback?.count ? `，${activeTask.feedback.count} 张已入库` : ''}。可在资产库查看。
+            已完成{activeTask.feedback?.count ? `，${activeTask.feedback.count} 张已存入资产库` : ''}。可在资产库查看。
           </p>
         ) : null}
 

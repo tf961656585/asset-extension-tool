@@ -1,4 +1,4 @@
-# Asset Extension Tool
+# 素材采图（Asset Extension Tool）
 
 Chrome MV3 扩展：保存网页图片到本地，用资产库检索、筛选、分类，并支持自带 API Key 的 AI 生图。
 
@@ -9,6 +9,7 @@ Chrome MV3 扩展：保存网页图片到本地，用资产库检索、筛选、
 - **资产库**：按站点、文件夹、标签筛选，瀑布流网格展示
 - **编辑**：修改标签与文件夹、定位磁盘文件、复制图像（失败时降级复制 URL）
 - **AI 生图**：侧边栏承载，多任务并发；文生图与图生图统一为同一任务模型
+- **多图收集**：网页图可加入侧边栏当前任务（右键「加入当前生图任务」/ 角标选择），把不同页面、不同标签页的图持续收进同一任务
 - **自建服务**：内置 OpenAI Images / Gemini Image 两套协议，用户自行添加服务商连接与模型
 - **血缘**：生成图记录来源参考图、提示词、模型等快照，历史资产可追溯
 
@@ -37,7 +38,18 @@ npm run pack     # 构建并打包为 zip
 
 ## 分发
 
-通过 GitHub Releases 分发：推送 `v*` 标签后，`.github/workflows/release.yml` 会构建并上传 `asset-extension-tool-v<version>.zip`。接收方下载解压后，按上面的「加载已解压的扩展程序」加载。
+通过 GitHub Releases 分发：推送 `v*` 标签后，`.github/workflows/release.yml` 会构建并上传两个资产：
+
+- `asset-extension-tool-v<version>.zip`：带版本号，便于归档与回溯。
+- `asset-extension-tool.zip`：固定名，始终指向最新正式 Release。
+
+固定下载地址（始终最新）：
+
+```text
+https://github.com/tf961656585/asset-extension-tool/releases/latest/download/asset-extension-tool.zip
+```
+
+接收方下载解压后，按上面的「加载已解压的扩展程序」加载。
 
 > Chrome 不允许点击链接直接安装非 Web Store 扩展，接收方仍需开启开发者模式。
 
@@ -49,7 +61,7 @@ npm run pack     # 构建并打包为 zip
 | `src/background/` | Service Worker：右键菜单、保存链路、磁盘下载、生图调度与落库（资产库唯一写入方） |
 | `src/content/` | 内容脚本：角标按钮组与状态机、图片识别策略 |
 | `src/popup/` | 弹窗 UI：资产浏览、筛选、编辑、设置、帮助 |
-| `src/sidepanel/` | 侧边栏 UI：生图任务与参数面板 |
+| `src/sidepanel/` | 侧边栏 UI：生图任务、参数面板与网页图收集判定（`collect-decision.ts`） |
 | `src/shared/` | 共享领域层：数据模型、保存 / 生图请求、消息协议、存储封装 |
 | `tests/` | 单元与契约测试 |
 | `scripts/` | 构建打包脚本 |

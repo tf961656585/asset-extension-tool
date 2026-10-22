@@ -263,7 +263,7 @@ function App() {
       if (isGenerated) {
         const blob = await getGeneratedBlob(asset.imageUrl);
         if (!blob) {
-          throw new Error('生成图字节缺失');
+          throw new Error('图片数据已丢失，请重新生成');
         }
         copyResult = await copyImageBlob(blob);
       } else {

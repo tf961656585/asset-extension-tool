@@ -31,3 +31,12 @@ jobs:
               --title "${GITHUB_REF_NAME}" \
               --generate-notes
           fi
+
+      - name: Verify release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          names="$(gh release view "${GITHUB_REF_NAME}" --json assets --jq '.assets[].name')"
+          printf '%s\n' "$names"
+          printf '%s\n' "$names" | grep -qx "asset-extension-tool-v${GITHUB_REF_NAME#v}.zip"
+          printf '%s\n' "$names" | grep -qx "asset-extension-tool.zip"

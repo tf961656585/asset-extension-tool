@@ -1,5 +1,10 @@
 import type { AssetRecord } from './model';
-import type { GenerationReference, GenerationReferencePayload } from './generation';
+import type {
+  CollectBlockReason,
+  CollectTarget,
+  GenerationReference,
+  GenerationReferencePayload
+} from './generation';
 
 export const MESSAGE_TYPES = {
   SAVE_IMAGE: 'SAVE_IMAGE',
@@ -7,7 +12,19 @@ export const MESSAGE_TYPES = {
   GENERATION_SUBMIT: 'GENERATION_SUBMIT',
   GENERATION_CREATE_TASK: 'GENERATION_CREATE_TASK',
   GENERATION_CANCEL_TASK: 'GENERATION_CANCEL_TASK',
-  GENERATION_FEEDBACK: 'GENERATION_FEEDBACK'
+  GENERATION_FEEDBACK: 'GENERATION_FEEDBACK',
+  /** 页面 → background：把网页图加入侧边栏当前聚焦任务。v3.10 */
+  GENERATION_COLLECT_REFERENCE: 'GENERATION_COLLECT_REFERENCE',
+  /** 页面 → background：查询当前是否有可加入的任务（决定是否先弹选择浮层）。v3.10 */
+  GENERATION_COLLECT_TARGET_QUERY: 'GENERATION_COLLECT_TARGET_QUERY',
+  /** background → sidepanel：查询当前聚焦任务的可加入状态。v3.10 */
+  GENERATION_COLLECT_TARGET_REQUEST: 'GENERATION_COLLECT_TARGET_REQUEST',
+  /** background → sidepanel：请求把网页图加入当前聚焦任务。v3.10 */
+  GENERATION_COLLECT_REQUEST: 'GENERATION_COLLECT_REQUEST',
+  /** sidepanel → background：中继回执（kind 区分 target / result）。v3.10 */
+  GENERATION_COLLECT_REPLY: 'GENERATION_COLLECT_REPLY',
+  /** background → 页面：右键菜单发起的收集结果回执（content script 据此弹 toast）。v3.10 */
+  GENERATION_COLLECT_FEEDBACK: 'GENERATION_COLLECT_FEEDBACK'
 } as const;
 
 export interface SaveImagePayload {
@@ -103,13 +120,103 @@ export interface GenerationFeedbackMessage {
   payload: GenerationFeedbackPayload;
 }
 
+/**
+ * 页面 → background：把网页图加入侧边栏当前聚焦任务（v3.10）。
+ * 与「生图入口」区别——入口每次新建任务，收集动作只往既有任务追加。
+ * background 经 sidepanel port 中继，结果由 sendResponse 返回给页面侧（不经第二条回执消息）。
+ */
+export interface GenerationCollectReferencePayload {
+  requestId: string;
+  imageUrl: string;
+  sourcePageUrl: string;
+}
+
+export interface GenerationCollectReferenceMessage {
+  type: typeof MESSAGE_TYPES.GENERATION_COLLECT_REFERENCE;
+  payload: GenerationCollectReferencePayload;
+}
+
+/** 页面 → background：查询当前是否有可加入的任务（角标点击时决定是否先弹选择浮层）。 */
+export type GenerationCollectTargetQueryMessage = {
+  type: typeof MESSAGE_TYPES.GENERATION_COLLECT_TARGET_QUERY;
+};
+
+/** background → sidepanel：请求把网页图加入当前聚焦任务。 */
+export interface GenerationCollectRequestPayload {
+  requestId: string;
+  imageUrl: string;
+  sourcePageUrl: string;
+}
+
+export interface GenerationCollectRequestMessage {
+  type: typeof MESSAGE_TYPES.GENERATION_COLLECT_REQUEST;
+  payload: GenerationCollectRequestPayload;
+}
+
+/** background → sidepanel：查询当前聚焦任务的可加入状态。 */
+export interface GenerationCollectTargetRequestPayload {
+  requestId: string;
+}
+
+export interface GenerationCollectTargetRequestMessage {
+  type: typeof MESSAGE_TYPES.GENERATION_COLLECT_TARGET_REQUEST;
+  payload: GenerationCollectTargetRequestPayload;
+}
+
+/**
+ * sidepanel → background：中继回执（两种查询共用一条消息，按 kind 区分）。
+ * background 收到后按 requestId 找到挂起的页面侧请求并 sendResponse，不缓存任务状态。
+ */
+export interface GenerationCollectReplyPayload {
+  requestId: string;
+  kind: 'target' | 'result';
+  /** kind=target 时携带可加入状态。 */
+  target?: CollectTarget;
+  /** kind=result 时携带加入结果。 */
+  result?: CollectResult;
+}
+
+export interface GenerationCollectReplyMessage {
+  type: typeof MESSAGE_TYPES.GENERATION_COLLECT_REPLY;
+  payload: GenerationCollectReplyPayload;
+}
+
+/**
+ * 加入结果。`outcome` 区分四种可展示结果，避免页面侧从文案反推状态：
+ * added（已加入）/ duplicate（已存在）/ fellBackToNewTask（无可加任务，已新建并加入）/ blocked（明确拒绝）。
+ */
+export interface CollectResult {
+  outcome: 'added' | 'duplicate' | 'fellBackToNewTask' | 'blocked';
+  /** 可直接展示的中文文案，由侧边栏按自身状态生成。 */
+  message: string;
+  taskLabel?: string;
+  refCount?: number;
+  maxRefs?: number;
+  blockReason?: CollectBlockReason;
+}
+
+/** background → 页面：右键菜单发起的收集结果回执（content script 据此弹 toast）。 */
+export interface GenerationCollectFeedbackMessage {
+  type: typeof MESSAGE_TYPES.GENERATION_COLLECT_FEEDBACK;
+  payload: {
+    ok: boolean;
+    message: string;
+  };
+}
+
 export type RuntimeMessage =
   | SaveImageMessage
   | SaveFeedbackMessage
   | GenerationSubmitMessage
   | GenerationCreateTaskMessage
   | GenerationCancelTaskMessage
-  | GenerationFeedbackMessage;
+  | GenerationFeedbackMessage
+  | GenerationCollectReferenceMessage
+  | GenerationCollectTargetQueryMessage
+  | GenerationCollectTargetRequestMessage
+  | GenerationCollectRequestMessage
+  | GenerationCollectReplyMessage
+  | GenerationCollectFeedbackMessage;
 
 function isGenerationReferencePayload(value: unknown): value is GenerationReferencePayload {
   if (!value || typeof value !== 'object') {

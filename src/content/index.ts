@@ -1,4 +1,10 @@
-import { MESSAGE_TYPES, type RuntimeMessage, type SaveImageResponse } from '../shared/messages';
+import {
+  MESSAGE_TYPES,
+  type CollectResult,
+  type RuntimeMessage,
+  type SaveImageResponse
+} from '../shared/messages';
+import type { CollectTarget } from '../shared/generation';
 import { createSavePayload } from '../shared/save';
 import { createTaskId } from '../shared/generation';
 import { getImageUrl, isSavableImage, resolveImageTargetFromProbe } from './quick-save-policy';
@@ -9,6 +15,7 @@ const GENERATE_BUTTON_ID = 'wyjh-quick-generate-button';
 const TOOLTIP_ID = 'wyjh-quick-tooltip';
 const TOAST_ID = 'wyjh-quick-toast';
 const STYLE_ID = 'wyjh-quick-style';
+const COLLECT_POPOVER_ID = 'wyjh-collect-popover';
 
 // 角标形态契约：36px 圆形纯图标徽章，半透明轻量视觉。
 // 文字提示走 hover tooltip，避免遮盖图像主体（与 Pinterest / Fatkun 等竞品主流量一致）。
@@ -183,6 +190,49 @@ function ensureStyles(): void {
       transform: translateY(8px);
       pointer-events: none;
     }
+
+    /* 角标点击后的两行选择浮层（v3.10）：只在存在可加入任务时出现。 */
+    #${COLLECT_POPOVER_ID} {
+      position: fixed;
+      z-index: 2147483647;
+      display: none;
+      flex-direction: column;
+      min-width: 168px;
+      padding: 4px;
+      border-radius: 10px;
+      background: rgba(15, 23, 42, 0.96);
+      box-shadow: 0 8px 24px rgba(15, 23, 42, 0.36);
+    }
+
+    #${COLLECT_POPOVER_ID}.wyjh-popover-visible {
+      display: flex;
+    }
+
+    #${COLLECT_POPOVER_ID} button {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      border: none;
+      background: transparent;
+      color: #ffffff;
+      font-size: 12px;
+      line-height: 1.4;
+      text-align: left;
+      padding: 7px 9px;
+      border-radius: 7px;
+      cursor: pointer;
+    }
+
+    #${COLLECT_POPOVER_ID} button:hover {
+      background: rgba(255, 255, 255, 0.12);
+    }
+
+    #${COLLECT_POPOVER_ID} .wyjh-popover-meta {
+      font-size: 11px;
+      opacity: 0.7;
+      white-space: nowrap;
+    }
   `;
 
   document.documentElement.append(style);
@@ -217,6 +267,12 @@ function initQuickButtonGroup(toast: HTMLDivElement): void {
   let saving = false;
   let hideTimer: number | null = null;
   let showTimer: number | null = null;
+  let popoverImage: HTMLImageElement | null = null;
+
+  const popover = document.createElement('div');
+  popover.id = COLLECT_POPOVER_ID;
+  popover.setAttribute('role', 'menu');
+  document.documentElement.append(popover);
 
   function clearHideTimer(): void {
     if (hideTimer !== null) {
@@ -302,6 +358,7 @@ function initQuickButtonGroup(toast: HTMLDivElement): void {
     activeImage = null;
     group.style.display = 'none';
     setTooltipVisible(false);
+    hideCollectPopover();
   }
 
   function scheduleHideGroup(): void {
@@ -379,12 +436,12 @@ function initQuickButtonGroup(toast: HTMLDivElement): void {
     }
   }
 
-  async function generateActiveImage(): Promise<void> {
-    if (!activeImage) {
+  async function generateActiveImage(image: HTMLImageElement | null = activeImage): Promise<void> {
+    if (!image) {
       return;
     }
 
-    const imageUrl = getImageUrl(activeImage);
+    const imageUrl = getImageUrl(image);
     if (!imageUrl) {
       showToast(toast, '当前图像地址不可用，无法生成。', 'error');
       return;
@@ -401,9 +458,135 @@ function initQuickButtonGroup(toast: HTMLDivElement): void {
           references: [{ kind: 'web', imageUrl }]
         }
       });
-      showToast(toast, '已创建生图任务，请在侧边栏查看。', 'info');
+      showToast(toast, '已创建生图任务，可在侧边栏继续添加参考图。', 'info');
     } catch {
       showToast(toast, '创建生图任务失败。', 'error');
+    }
+  }
+
+  /**
+   * 角标点击入口（v3.10）：先向 background 查询是否存在可加入的任务。
+   * 有 → 弹两行选择浮层（加入 / 新建）；无或查询失败 → 保持原行为直接新建，
+   * 让最高频的单图生成路径不为状态查询多付一次点击。
+   */
+  async function handleGenerateClick(): Promise<void> {
+    if (!activeImage) {
+      return;
+    }
+    const image = activeImage;
+    const imageUrl = getImageUrl(image);
+    if (!imageUrl) {
+      showToast(toast, '当前图像地址不可用，无法生成。', 'error');
+      return;
+    }
+
+    let target: CollectTarget | null = null;
+    try {
+      target = (await chrome.runtime.sendMessage({
+        type: MESSAGE_TYPES.GENERATION_COLLECT_TARGET_QUERY
+      })) as CollectTarget | null;
+    } catch {
+      target = null;
+    }
+
+    if (!target?.available) {
+      void generateActiveImage(image);
+      return;
+    }
+
+    showCollectPopover(image, target);
+  }
+
+  function hideCollectPopover(): void {
+    popover.classList.remove('wyjh-popover-visible');
+    popoverImage = null;
+  }
+
+  function showCollectPopover(image: HTMLImageElement, target: CollectTarget): void {
+    popoverImage = image;
+    popover.replaceChildren();
+
+    const collectButton = document.createElement('button');
+    collectButton.type = 'button';
+    collectButton.setAttribute('role', 'menuitem');
+    const collectLabel = document.createElement('span');
+    collectLabel.textContent = `加入${target.taskLabel ?? '当前任务'}`;
+    const collectMeta = document.createElement('span');
+    collectMeta.className = 'wyjh-popover-meta';
+    collectMeta.textContent = `${target.refCount}/${target.maxRefs} 张`;
+    collectButton.append(collectLabel, collectMeta);
+    collectButton.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      hideCollectPopover();
+      void collectActiveImage(image);
+    });
+
+    const newTaskButton = document.createElement('button');
+    newTaskButton.type = 'button';
+    newTaskButton.setAttribute('role', 'menuitem');
+    newTaskButton.textContent = '新建任务';
+    newTaskButton.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      hideCollectPopover();
+      void generateActiveImage(image);
+    });
+
+    popover.append(collectButton, newTaskButton);
+    // 必须先可见再测量：display:none 状态下 offsetWidth/Height 恒为 0，会导致定位落回左上角。
+    popover.classList.add('wyjh-popover-visible');
+    positionPopover();
+  }
+
+  function positionPopover(): void {
+    if (!popoverImage) {
+      return;
+    }
+    const rect = popoverImage.getBoundingClientRect();
+    const width = popover.offsetWidth || 168;
+    const height = popover.offsetHeight || 72;
+    const left = Math.min(
+      Math.max(rect.left + rect.width - width, 4),
+      window.innerWidth - width - 4
+    );
+    const top = Math.min(
+      Math.max(rect.top + rect.height - height, 4),
+      window.innerHeight - height - 4
+    );
+    popover.style.left = `${Math.round(left)}px`;
+    popover.style.top = `${Math.round(top)}px`;
+  }
+
+  /** 把该图加入侧边栏当前聚焦任务；结果由 background 的 sendResponse 返回并就地提示。 */
+  async function collectActiveImage(image: HTMLImageElement): Promise<void> {
+    const imageUrl = getImageUrl(image);
+    if (!imageUrl) {
+      showToast(toast, '当前图像地址不可用，无法加入。', 'error');
+      return;
+    }
+
+    try {
+      const result = (await chrome.runtime.sendMessage({
+        type: MESSAGE_TYPES.GENERATION_COLLECT_REFERENCE,
+        payload: {
+          requestId: createTaskId(),
+          imageUrl,
+          sourcePageUrl: window.location.href
+        }
+      })) as CollectResult | null;
+
+      if (!result) {
+        showToast(toast, '加入参考图失败，请重试。', 'error');
+        return;
+      }
+      showToast(
+        toast,
+        result.message,
+        result.outcome === 'blocked' ? 'error' : result.outcome === 'duplicate' ? 'info' : 'success'
+      );
+    } catch {
+      showToast(toast, '加入参考图失败，请重试。', 'error');
     }
   }
 
@@ -424,8 +607,19 @@ function initQuickButtonGroup(toast: HTMLDivElement): void {
         return;
       }
 
+      // 浮层是独立定位元素（不在按钮组内）：指针移上去不能判定为「离开图片」，
+      // 否则点击「加入任务 N」的瞬间浮层就会被收起。
+      if (popover.contains(target)) {
+        clearHideTimer();
+        return;
+      }
+
       const image = asHtmlImageElement(resolveImageTargetFromProbe(event));
       if (image) {
+        // 指针移到另一张图：浮层仍指向旧图，必须先收起，否则点「加入任务」会加错图。
+        if (popoverImage && popoverImage !== image) {
+          hideCollectPopover();
+        }
         setActiveImage(image);
         return;
       }
@@ -466,11 +660,48 @@ function initQuickButtonGroup(toast: HTMLDivElement): void {
   generateButton.addEventListener('click', (event) => {
     event.preventDefault();
     event.stopPropagation();
-    void generateActiveImage();
+    void handleGenerateClick();
   });
 
-  window.addEventListener('scroll', () => updateGroupPosition(), true);
-  window.addEventListener('resize', () => updateGroupPosition());
+  // 浮层打开期间点击页面其他位置 / ESC 关闭，避免残留遮挡图像。
+  document.addEventListener(
+    'mousedown',
+    (event) => {
+      if (!popover.classList.contains('wyjh-popover-visible')) {
+        return;
+      }
+      const target = event.target as Node | null;
+      if (target && (popover.contains(target) || group.contains(target))) {
+        return;
+      }
+      hideCollectPopover();
+    },
+    true
+  );
+
+  // 指针从 ✨ 移进浮层时，按钮的 mouseleave 已排了收起计时——
+  // 这里必须撤销，否则用户还没点到「加入任务 N」浮层就消失了。
+  popover.addEventListener('mouseenter', () => {
+    clearHideTimer();
+  });
+  popover.addEventListener('mouseleave', () => {
+    scheduleHideGroup();
+  });
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+      hideCollectPopover();
+    }
+  });
+
+  window.addEventListener('scroll', () => {
+    hideCollectPopover();
+    updateGroupPosition();
+  }, true);
+  window.addEventListener('resize', () => {
+    hideCollectPopover();
+    updateGroupPosition();
+  });
 }
 
 function initializeContentOverlay(): HTMLDivElement {
@@ -489,6 +720,10 @@ if (!window.__wyjhQuickSaveInitialized__) {
 
 chrome.runtime.onMessage.addListener((message: RuntimeMessage) => {
   if (message.type === MESSAGE_TYPES.SAVE_FEEDBACK && toast) {
+    showToast(toast, message.payload.message, message.payload.ok ? 'success' : 'error');
+  }
+
+  if (message.type === MESSAGE_TYPES.GENERATION_COLLECT_FEEDBACK && toast) {
     showToast(toast, message.payload.message, message.payload.ok ? 'success' : 'error');
   }
 
